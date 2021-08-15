@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-deployment
+spec:
+  replicas: 1
+  selector: 
+    matchLabels:
+        app: my-deployment
+  template:
+      spec:
+        hostNetwork: true
+        containers:
+          - name: dedicated-server
+            image: artificialworlds/hideandseek:latest
+            imagePullPolicy: Always
+            ports:
+              - name: default
+                containerPort: 7777
+      metadata:
+        labels:
+            app: my-deployment
