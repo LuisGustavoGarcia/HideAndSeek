@@ -5,6 +5,7 @@ using MLAPI;
 using MLAPI.Messaging;
 using MLAPI.NetworkVariable;
 using UnityEngine.UI;
+using UnityEngine.SceneManagement;
 
 public class GameManager : NetworkBehaviour
 {
@@ -46,7 +47,14 @@ public class GameManager : NetworkBehaviour
         ReadPermission = NetworkVariablePermission.Everyone,
     });
 
+    public NetworkVariableInt CurrentLevelIndex = new NetworkVariableInt(new NetworkVariableSettings
+    {
+        WritePermission = NetworkVariablePermission.ServerOnly,
+        ReadPermission = NetworkVariablePermission.Everyone,
+    });
+
     [SerializeField] private Text m_timerText;
+    [SerializeField] private List<string> m_levelNames;
 
     private void Awake()
     {
@@ -161,6 +169,10 @@ public class GameManager : NetworkBehaviour
                 GameReady.Value = true;
                 GameTimer.Value = m_gameLobbyTimerSeconds;
             }
+            else
+            {
+                LoadLevelClientRpc();
+            }
         }
     }
 
@@ -181,7 +193,7 @@ public class GameManager : NetworkBehaviour
         GameTimer.Value = m_gameLobbyTimerSeconds;
 
         TeleportAllPlayersToLobby();
-        UnloadCurrentLevel();
+        UnloadCurrentLevelClientRpc();
     }
 
     public void ChooseSeeker()
@@ -221,13 +233,22 @@ public class GameManager : NetworkBehaviour
     private void LoadRandomLevel()
     {
         Debug.Log("Loading new level.");
-        // TODO: Choose level from list of possible levels, load it additively to the current scene.
+        CurrentLevelIndex.Value = (int)Random.Range(0, m_levelNames.Count);
+        LoadLevelClientRpc();
     }
 
-    private void UnloadCurrentLevel()
+    [ClientRpc]
+    private void LoadLevelClientRpc()
+    {
+        Debug.Log("Loading new level.");
+        SceneManager.LoadSceneAsync(m_levelNames[CurrentLevelIndex.Value], LoadSceneMode.Additive);
+    }
+
+    [ClientRpc]
+    private void UnloadCurrentLevelClientRpc()
     {
         Debug.Log("Removing current level.");
-        // TODO: Remove currently loaded game level.
+        SceneManager.UnloadSceneAsync(m_levelNames[CurrentLevelIndex.Value]);
     }
 
     private void TeleportPlayersExceptSeekerToLevel()

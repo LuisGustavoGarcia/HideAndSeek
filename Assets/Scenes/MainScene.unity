@@ -503,9 +503,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_gameLobbyTimerSeconds: 10
-  m_gameLengthTimerSeconds: 10
+  m_gameLengthTimerSeconds: 100
   m_gameHidingTimerSeconds: 10
-  m_minPlayerCount: 2
+  m_minPlayerCount: 1
   GameReady:
     m_InternalValue: 0
   SeekerClientId:
@@ -516,7 +516,11 @@ MonoBehaviour:
     m_InternalValue: 0
   PlayersHiding:
     m_InternalValue: 0
+  CurrentLevelIndex:
+    m_InternalValue: 0
   m_timerText: {fileID: 1232244074}
+  m_levelNames:
+  - Level1
 --- !u!4 &654231821
 Transform:
   m_ObjectHideFlags: 0
@@ -1445,7 +1449,7 @@ MonoBehaviour:
     ProtocolVersion: 0
     NetworkTransport: {fileID: 1599636853}
     RegisteredScenes:
-    - SampleScene
+    - MainScene
     AllowRuntimeSceneChanges: 0
     NetworkPrefabs:
     - Prefab: {fileID: 5648851651728778641, guid: 68a19c924f3166f439ab3c86ae4b8ab8, type: 3}
