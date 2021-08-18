@@ -9,6 +9,14 @@ using UnityEngine.SceneManagement;
 
 public class GameManager : NetworkBehaviour
 {
+    private enum GameState
+    {
+        NOT_READY,
+        LOBBY,
+        IN_PROGRESS_HIDING,
+        IN_PROGRESS_SEEKING
+    }
+
     public static GameManager Singleton = null;
 
     public float m_gameLobbyTimerSeconds = 10f; // Number of seconds in between rounds.
@@ -17,31 +25,12 @@ public class GameManager : NetworkBehaviour
 
     public int m_minPlayerCount = 2; // Minimum number of players for game to start.
 
-    // This value is true if there are enough players in the server, it means we can start a game, etc.
-    public NetworkVariableBool GameReady = new NetworkVariableBool(new NetworkVariableSettings
-    {
-        WritePermission = NetworkVariablePermission.ServerOnly,
-        ReadPermission = NetworkVariablePermission.Everyone,
-    });
-
-    public NetworkVariableULong SeekerClientId = new NetworkVariableULong(new NetworkVariableSettings
-    {
-        WritePermission = NetworkVariablePermission.ServerOnly,
-        ReadPermission = NetworkVariablePermission.Everyone
-    });
-
-    public NetworkVariableBool GameInProgress = new NetworkVariableBool(new NetworkVariableSettings {
+    public NetworkVariableInt CurrentGameState = new NetworkVariableInt(new NetworkVariableSettings {
         WritePermission = NetworkVariablePermission.ServerOnly,
         ReadPermission = NetworkVariablePermission.Everyone,
     });
 
     public NetworkVariableFloat GameTimer = new NetworkVariableFloat(new NetworkVariableSettings
-    {
-        WritePermission = NetworkVariablePermission.ServerOnly,
-        ReadPermission = NetworkVariablePermission.Everyone,
-    });
-
-    public NetworkVariableBool PlayersHiding = new NetworkVariableBool(new NetworkVariableSettings
     {
         WritePermission = NetworkVariablePermission.ServerOnly,
         ReadPermission = NetworkVariablePermission.Everyone,
@@ -55,6 +44,13 @@ public class GameManager : NetworkBehaviour
 
     [SerializeField] private Text m_timerText;
     [SerializeField] private List<string> m_levelNames;
+    [SerializeField] private Transform m_lobbySpawnPosition;
+    private Transform m_currentLevelSpawnPosition;
+
+    private Player m_seeker;
+    private List<Player> m_players;
+    private List<Player> m_playersLeftToFind;
+    private AsyncOperation m_levelLoaded;
 
     private void Awake()
     {
@@ -71,6 +67,9 @@ public class GameManager : NetworkBehaviour
 
     private void Start()
     {
+        m_players = new List<Player>();
+        m_playersLeftToFind = new List<Player>();
+        m_timerText.text = "";
         NetworkManager.Singleton.OnServerStarted += AddServerCallbacks;
     }
 
@@ -78,7 +77,7 @@ public class GameManager : NetworkBehaviour
     {
         if (NetworkManager.Singleton.IsServer)
         {
-            if (GameReady.Value)
+            if ((GameState)CurrentGameState.Value != GameState.NOT_READY)
             {
                 GameTimer.Value -= Time.deltaTime;
                 UpdateGameState();
@@ -90,22 +89,22 @@ public class GameManager : NetworkBehaviour
 
     private void UpdateGameState()
     {
-        if (GameTimer.Value <= 0 && !GameInProgress.Value)
+        if (GameTimer.Value <= 0 && (GameState)CurrentGameState.Value == GameState.LOBBY)
         {
-            // Lobby timer expired, start a game.
-            GameTimer.Value = 0;
+            GameTimer.Value = m_gameHidingTimerSeconds;
+            CurrentGameState.Value = (int)GameState.IN_PROGRESS_HIDING;
             StartGame();
         }
-        else if (GameTimer.Value <= 0 && GameInProgress.Value && PlayersHiding.Value)
+        else if (GameTimer.Value <= 0 && (GameState)CurrentGameState.Value == GameState.IN_PROGRESS_HIDING)
         {
-            // Hiding phase is over, allow seeker to begin seeking players.
-            GameTimer.Value = 0;
+            GameTimer.Value = m_gameLengthTimerSeconds;
+            CurrentGameState.Value = (int)GameState.IN_PROGRESS_SEEKING;
             EndHidingPhase();
         }
-        else if (GameTimer.Value <= 0 && GameInProgress.Value)
+        else if (GameTimer.Value <= 0 && (GameState)CurrentGameState.Value == GameState.IN_PROGRESS_SEEKING)
         {
-            // Game timer expired, end game.
-            GameTimer.Value = 0;
+            GameTimer.Value = m_gameLobbyTimerSeconds;
+            CurrentGameState.Value = (int)GameState.LOBBY;
             EndGame();
         }
     }
@@ -120,24 +119,23 @@ public class GameManager : NetworkBehaviour
     public void UpdateGameTimerUiElement()
     {
         // Update Timer UI Element.
-        if (GameReady.Value && m_timerText != null)
+        if ((GameState)CurrentGameState.Value == GameState.NOT_READY)
         {
-            if (GameInProgress.Value && PlayersHiding.Value)
+            m_timerText.text = "Waiting For Players";
+        } else
+        {
+            if ((GameState)CurrentGameState.Value == GameState.IN_PROGRESS_HIDING)
             {
                 m_timerText.text = "Time To Hide: " + ((int)GameTimer.Value).ToString();
             }
-            else if (GameInProgress.Value)
+            else if ((GameState)CurrentGameState.Value == GameState.IN_PROGRESS_SEEKING)
             {
                 m_timerText.text = "Time Left In Round: " + ((int)GameTimer.Value).ToString();
             }
-            else
+            else if ((GameState)CurrentGameState.Value == GameState.LOBBY)
             {
                 m_timerText.text = "Time Until Next Round: " + ((int)GameTimer.Value).ToString();
             }
-        }
-        else if (m_timerText != null)
-        {
-            m_timerText.text = "Waiting For Players";
         }
     }
 
@@ -145,6 +143,8 @@ public class GameManager : NetworkBehaviour
     {
         if (NetworkManager.Singleton.IsServer)
         {
+            CurrentGameState.Value = (int)GameState.NOT_READY;
+            m_lobbySpawnPosition = GameObject.Find("LobbySpawnPosition").GetComponent<Transform>();
             NetworkManager.Singleton.OnClientConnectedCallback += ClientConnected;
             NetworkManager.Singleton.OnClientDisconnectCallback += ClientDisconnected;
         }
@@ -153,9 +153,22 @@ public class GameManager : NetworkBehaviour
     private void ClientDisconnected(ulong clientId)
     {
         Debug.Log("Player disconnected.");
-        if (NetworkManager.Singleton.IsServer && NetworkManager.Singleton.ConnectedClients.Count < m_minPlayerCount)
+        if (NetworkManager.Singleton.IsServer)
         {
-            GameReady.Value = false;
+            // Remove player from all player lists.
+            Player player = GetPlayerComponent(clientId);
+            if (m_players.Contains(player))
+            {
+                m_players.Remove(player);
+            }
+            if (m_playersLeftToFind.Contains(player))
+            {
+                m_playersLeftToFind.Remove(player);
+            }
+            if (NetworkManager.Singleton.ConnectedClients.Count < m_minPlayerCount)
+            {
+               CurrentGameState.Value = (int)GameState.NOT_READY;
+            }
         }
     }
 
@@ -164,116 +177,198 @@ public class GameManager : NetworkBehaviour
         Debug.Log("Player joined.");
         if (NetworkManager.Singleton.IsServer)
         {
-            if (NetworkManager.Singleton.ConnectedClients.Count >= m_minPlayerCount && !GameReady.Value)
+            // Add player to player list.
+            Player player = GetPlayerComponent(clientId);
+            m_players.Add(player);
+            player.IsSeeker.Value = false;
+
+            // Update game ready-ness.
+            if (NetworkManager.Singleton.ConnectedClients.Count >= m_minPlayerCount && (GameState)CurrentGameState.Value == GameState.NOT_READY)
             {
-                GameReady.Value = true;
+                CurrentGameState.Value = (int)GameState.LOBBY;
                 GameTimer.Value = m_gameLobbyTimerSeconds;
             }
             else
             {
-                LoadLevelClientRpc();
+                // Send a load level RPC to this newly joined client specifically. All other clients should have already done so.
+                ClientRpcParams clientRpcParams = new ClientRpcParams
+                {
+                    Send = new ClientRpcSendParams
+                    {
+                        TargetClientIds = new ulong[] { clientId }
+                    }
+                };
+                LoadLevelClientRpc(clientRpcParams);
             }
         }
     }
 
     public void StartGame()
     {
-        Debug.Log("Starting game round.");
-        GameInProgress.Value = true;
+        Debug.Log("Starting game round hiding phase.");
 
         ChooseSeeker();
+        UpdatePlayersLeftToFind();
         LoadRandomLevel();
-        TeleportPlayersExceptSeekerToLevel();
     }
 
     public void EndGame()
     {
         Debug.Log("Ending game round.");
-        GameInProgress.Value = false;
-        GameTimer.Value = m_gameLobbyTimerSeconds;
 
         TeleportAllPlayersToLobby();
+        UnloadCurrentLevelServerSide();
         UnloadCurrentLevelClientRpc();
     }
 
     public void ChooseSeeker()
     {
         bool needNewSeeker = true;
+        ulong randomClientId = 0;
         while (needNewSeeker)
         {
             int randomIndex = UnityEngine.Random.Range(0, NetworkManager.Singleton.ConnectedClientsList.Count - 1);
-            ulong randomClientId = NetworkManager.Singleton.ConnectedClientsList[randomIndex].ClientId;
+            randomClientId = NetworkManager.Singleton.ConnectedClientsList[randomIndex].ClientId;
 
             // TODO: Fix bug: This always seems to pick the same seeker, at least when there are only 2 clients.
             //if (SeekerClientId.Value == 0 && randomClientId != SeekerClientId.Value)
             //{
                 needNewSeeker = false;
             //}
-            RemoveSeekerStatusFromPlayer(SeekerClientId.Value);
-            SeekerClientId.Value = randomClientId;
-            GrantPlayerSeekerStatus(SeekerClientId.Value);
+            RemoveSeekerStatusFromCurrentSeeker();
+            m_seeker = GetPlayerComponent(randomClientId);
+            m_seeker.IsSeeker.Value = true;
+            
         }
-        Debug.Log("Client " + SeekerClientId.Value + " is the new Seeker");
+        Debug.Log("Client " + randomClientId + " is the new Seeker");
     }
 
-    private void RemoveSeekerStatusFromPlayer(ulong clientId)
+    private void UpdatePlayersLeftToFind()
     {
-        Player player = GetPlayerComponent(clientId);
-        if (player == null) { return; }
-        player.IsSeeker.Value = false;
+        m_playersLeftToFind.Clear();
+        foreach (Player player in m_players)
+        {
+            if (player != m_seeker)
+            {
+                m_playersLeftToFind.Add(player);
+            }
+        }
     }
 
-    private void GrantPlayerSeekerStatus(ulong clientId)
+    private void RemoveSeekerStatusFromCurrentSeeker()
     {
-        Player player = GetPlayerComponent(clientId);
-        if (player == null) { return; }
-        player.IsSeeker.Value = true;
+        if (m_seeker)
+        {
+            m_seeker.IsSeeker.Value = false;
+            m_seeker = null;
+        }
+        
     }
 
     private void LoadRandomLevel()
     {
         Debug.Log("Loading new level.");
         CurrentLevelIndex.Value = (int)Random.Range(0, m_levelNames.Count);
+        LoadLevel();
         LoadLevelClientRpc();
+        
+    }
+
+    private void UpdateLevelSpawnPoint(AsyncOperation operation)
+    {
+        Debug.Log("Updating spawn position");
+        GameObject levelRoot = GameObject.Find("LevelRoot");
+        levelRoot.transform.position = new Vector3(1000, 1000, 0);
+        if (IsServer)
+        {
+            m_currentLevelSpawnPosition = GameObject.Find("LevelSpawnPosition").GetComponent<Transform>();
+            Debug.Log(m_currentLevelSpawnPosition);
+            TeleportPlayersExceptSeekerToLevel();
+        }
+    }
+
+    private void LoadLevel()
+    {
+        Debug.Log("Server loading new level.");
+        m_levelLoaded = SceneManager.LoadSceneAsync(m_levelNames[CurrentLevelIndex.Value], LoadSceneMode.Additive);
+        m_levelLoaded.completed += UpdateLevelSpawnPoint;
     }
 
     [ClientRpc]
-    private void LoadLevelClientRpc()
+    private void LoadLevelClientRpc(ClientRpcParams clientRpcParams = default)
     {
-        Debug.Log("Loading new level.");
-        SceneManager.LoadSceneAsync(m_levelNames[CurrentLevelIndex.Value], LoadSceneMode.Additive);
+        Debug.Log("Client loading new level.");
+        LoadLevel();
+    }
+
+    private void UnloadCurrentLevelServerSide()
+    {
+        Debug.Log("Server unloading current level.");
+        SceneManager.UnloadSceneAsync(m_levelNames[CurrentLevelIndex.Value]);
     }
 
     [ClientRpc]
     private void UnloadCurrentLevelClientRpc()
     {
-        Debug.Log("Removing current level.");
+        Debug.Log("Client unloading current level.");
         SceneManager.UnloadSceneAsync(m_levelNames[CurrentLevelIndex.Value]);
     }
 
     private void TeleportPlayersExceptSeekerToLevel()
     {
-        Debug.Log("Starting game round hiding phase.");
-        GameTimer.Value = m_gameHidingTimerSeconds;
-        PlayersHiding.Value = true;
-        // TODO: Teleport players except seeker to spawn points on current game level.
+        Debug.Log("Teleporting non-seeker players to position:" + m_currentLevelSpawnPosition.position);
+        foreach (Player player in m_playersLeftToFind)
+        {
+            player.IsCaught.Value = false;
+            ClientRpcParams clientRpcParams = new ClientRpcParams
+            {
+                Send = new ClientRpcSendParams
+                {
+                    TargetClientIds = new ulong[] { player.OwnerClientId }
+                }
+            };
+            UpdateLocalPlayerPositionClientRpc(m_currentLevelSpawnPosition.position, clientRpcParams);
+        }
     }
 
     private void TeleportSeekerToLevel()
     {
-        // TODO: Teleport the seeker to the current game level.
+        Debug.Log("Teleporting seeker to position:" + m_currentLevelSpawnPosition.position);
+        ClientRpcParams clientRpcParams = new ClientRpcParams
+        {
+            Send = new ClientRpcSendParams
+            {
+                TargetClientIds = new ulong[] { m_seeker.OwnerClientId }
+            }
+        };
+        UpdateLocalPlayerPositionClientRpc(m_currentLevelSpawnPosition.position, clientRpcParams);
     }
     
     private void EndHidingPhase()
     {
         Debug.Log("Starting game round seeking phase.");
-        GameTimer.Value = m_gameLengthTimerSeconds;
-        PlayersHiding.Value = false;
         TeleportSeekerToLevel();
     }
 
     private void TeleportAllPlayersToLobby()
     {
-        // TODO: Teleport all players to spawn points in the game lobby.
+        Debug.Log("Teleporting players to position:" + m_lobbySpawnPosition.position);
+        foreach (Player player in m_players)
+        {
+            ClientRpcParams clientRpcParams = new ClientRpcParams
+            {
+                Send = new ClientRpcSendParams
+                {
+                    TargetClientIds = new ulong[] { player.OwnerClientId }
+                }
+            };
+            UpdateLocalPlayerPositionClientRpc(m_lobbySpawnPosition.position, clientRpcParams);
+        }
+    }
+
+    [ClientRpc]
+    private void UpdateLocalPlayerPositionClientRpc(Vector3 newPosition, ClientRpcParams clientRpcParams)
+    {
+        GetPlayerComponent(NetworkManager.LocalClientId).transform.position = newPosition;
     }
 }

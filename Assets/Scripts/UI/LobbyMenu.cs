@@ -7,10 +7,14 @@ public class LobbyMenu : MonoBehaviour
 {
     [SerializeField] private GameObject m_menuPanel;
     [SerializeField] private InputField m_inputField;
+    [SerializeField] private Button m_joinServerButton;
+    [SerializeField] private Button m_startServerButton;
 
     private void Start()
     {
         CheckCommandLineFlags();
+        m_joinServerButton.onClick.AddListener(JoinAsClient);
+        m_startServerButton.onClick.AddListener(StartServer);
     }
 
     private void CheckCommandLineFlags()

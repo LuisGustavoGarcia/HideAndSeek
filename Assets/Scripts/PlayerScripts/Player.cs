@@ -18,8 +18,16 @@ public class Player : NetworkBehaviour
         ReadPermission = NetworkVariablePermission.Everyone
     });
 
-    
+    public NetworkVariableBool IsCaught = new NetworkVariableBool(new NetworkVariableSettings
+    {
+        WritePermission = NetworkVariablePermission.ServerOnly,
+        ReadPermission = NetworkVariablePermission.Everyone
+    });
+
+
     public float m_moveSpeed = 5f;
+
+    [SerializeField] private GameObject m_seekerNameplate;
 
     private Rigidbody2D m_rb;
     private Animator m_animator;
@@ -29,6 +37,7 @@ public class Player : NetworkBehaviour
 
     void Awake()
     {
+        m_seekerNameplate.SetActive(false);
         m_rb = gameObject.GetComponent<Rigidbody2D>();
         m_animator = gameObject.GetComponent<Animator>();
         if (NetworkManager.Singleton.IsClient)
@@ -55,6 +64,7 @@ public class Player : NetworkBehaviour
 
     public override void NetworkStart()
     {
+        IsSeeker.OnValueChanged += UpdateSeekerNameplateVisibility;
         MoveToStartingPosition();
     }
 
@@ -121,5 +131,11 @@ public class Player : NetworkBehaviour
         m_animator.SetFloat("CurrentVertical", m_currentMovement.y);
         m_animator.SetFloat("PreviousHorizontal", m_previousMovement.x);
         m_animator.SetFloat("PreviousVertical", m_previousMovement.y);
+    }
+
+    private void UpdateSeekerNameplateVisibility(bool previousValue, bool newValue)
+    {
+        Debug.Log("Player IsSeeker: " + newValue);
+        m_seekerNameplate.SetActive(newValue);
     }
 }
