@@ -135,7 +135,6 @@ public class Player : NetworkBehaviour
 
     private void UpdateSeekerNameplateVisibility(bool previousValue, bool newValue)
     {
-        Debug.Log("Player IsSeeker: " + newValue);
         m_seekerNameplate.SetActive(newValue);
     }
 }

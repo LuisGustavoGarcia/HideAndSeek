@@ -637,7 +637,7 @@ MonoBehaviour:
   m_gameLobbyTimerSeconds: 10
   m_gameLengthTimerSeconds: 100
   m_gameHidingTimerSeconds: 20
-  m_minPlayerCount: 1
+  m_minPlayerCount: 2
   CurrentGameState:
     m_InternalValue: 0
   GameTimer:
@@ -872,7 +872,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: Option A
+  m_Text: 
 --- !u!222 &880724990
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -1298,6 +1298,7 @@ GameObject:
   - component: {fileID: 1214175034}
   - component: {fileID: 1214175035}
   - component: {fileID: 1214175037}
+  - component: {fileID: 1214175036}
   m_Layer: 5
   m_Name: TransformationMenu
   m_TagString: Untagged
@@ -1322,7 +1323,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 1, y: 1}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: -1098, y: -366}
+  m_AnchoredPosition: {x: -1085.32, y: -351.4}
   m_SizeDelta: {x: 2196, y: 732}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &1214175035
@@ -1333,6 +1334,22 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1214175033}
   m_CullTransparentMesh: 1
+--- !u!114 &1214175036
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1214175033}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3499d674997ed5445bc19764d531a720, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_sprites:
+  - {fileID: 21300000, guid: a9320916b2431fe44bb08d14b123085b, type: 3}
+  m_names:
+  - CHAIR
 --- !u!114 &1214175037
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1562,8 +1579,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_FirstSelected: {fileID: 0}
-  m_sendNavigationEvents: 1
-  m_DragThreshold: 10
+  m_sendNavigationEvents: 144
+  m_DragThreshold: 556
 --- !u!4 &1256002652
 Transform:
   m_ObjectHideFlags: 0
@@ -2079,7 +2096,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Navigation:
-    m_Mode: 3
+    m_Mode: 2
     m_WrapAround: 0
     m_SelectOnUp: {fileID: 0}
     m_SelectOnDown: {fileID: 0}
@@ -2114,13 +2131,7 @@ MonoBehaviour:
   m_ItemImage: {fileID: 0}
   m_Value: 0
   m_Options:
-    m_Options:
-    - m_Text: Option A
-      m_Image: {fileID: 0}
-    - m_Text: Option B
-      m_Image: {fileID: 0}
-    - m_Text: Option C
-      m_Image: {fileID: 0}
+    m_Options: []
   m_OnValueChanged:
     m_PersistentCalls:
       m_Calls: []
