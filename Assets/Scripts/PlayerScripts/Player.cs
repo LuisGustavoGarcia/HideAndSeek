@@ -1,45 +1,39 @@
 
 using MLAPI;
+using MLAPI.Connection;
 using MLAPI.Messaging;
 using MLAPI.NetworkVariable;
 using UnityEngine;
 
 public class Player : NetworkBehaviour
 {
-    public NetworkVariableVector2 Position = new NetworkVariableVector2(new NetworkVariableSettings
-    {
-        WritePermission = NetworkVariablePermission.ServerOnly,
-        ReadPermission = NetworkVariablePermission.Everyone
-    });
+    public NetworkVariableVector2 Position = new NetworkVariableVector2();
 
-    public NetworkVariableBool IsSeeker = new NetworkVariableBool(new NetworkVariableSettings
-    {
-        WritePermission = NetworkVariablePermission.ServerOnly,
-        ReadPermission = NetworkVariablePermission.Everyone
-    });
+    public NetworkVariableBool IsSeeker = new NetworkVariableBool();
 
-    public NetworkVariableBool IsCaught = new NetworkVariableBool(new NetworkVariableSettings
-    {
-        WritePermission = NetworkVariablePermission.ServerOnly,
-        ReadPermission = NetworkVariablePermission.Everyone
-    });
+    public NetworkVariableBool IsCaught = new NetworkVariableBool();
 
+    public NetworkVariableString Transformation = new NetworkVariableString();
 
     public float m_moveSpeed = 5f;
 
     [SerializeField] private GameObject m_seekerNameplate;
 
     private Rigidbody2D m_rb;
+    private SpriteRenderer m_spriteRenderer;
     private Animator m_animator;
+
     private Vector2 m_currentMovement;
     private Vector2 m_previousMovement;
     private PlayerInputActions m_input;
+    
 
     void Awake()
     {
         m_seekerNameplate.SetActive(false);
         m_rb = gameObject.GetComponent<Rigidbody2D>();
         m_animator = gameObject.GetComponent<Animator>();
+        m_spriteRenderer = gameObject.GetComponent<SpriteRenderer>();
         if (NetworkManager.Singleton.IsClient)
         {
             m_input = new PlayerInputActions();
@@ -65,6 +59,7 @@ public class Player : NetworkBehaviour
     public override void NetworkStart()
     {
         IsSeeker.OnValueChanged += UpdateSeekerNameplateVisibility;
+        Transformation.OnValueChanged += UpdateTransformation;
         MoveToStartingPosition();
     }
 
@@ -136,5 +131,10 @@ public class Player : NetworkBehaviour
     private void UpdateSeekerNameplateVisibility(bool previousValue, bool newValue)
     {
         m_seekerNameplate.SetActive(newValue);
+    }
+
+    public void UpdateTransformation(string previousValue, string currentValue)
+    {
+        TransformationManager.Singleton.UpdatePlayerModel(Transformation.Value, m_animator, m_spriteRenderer);
     }
 }

@@ -6,6 +6,7 @@ using MLAPI.Messaging;
 using MLAPI.NetworkVariable;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
+using MLAPI.Connection;
 
 public class GameManager : NetworkBehaviour
 {
@@ -25,31 +26,20 @@ public class GameManager : NetworkBehaviour
 
     public int m_minPlayerCount = 2; // Minimum number of players for game to start.
 
-    public NetworkVariableInt CurrentGameState = new NetworkVariableInt(new NetworkVariableSettings {
-        WritePermission = NetworkVariablePermission.ServerOnly,
-        ReadPermission = NetworkVariablePermission.Everyone,
-    });
+    public NetworkVariableInt CurrentGameState = new NetworkVariableInt();
 
-    public NetworkVariableFloat GameTimer = new NetworkVariableFloat(new NetworkVariableSettings
-    {
-        WritePermission = NetworkVariablePermission.ServerOnly,
-        ReadPermission = NetworkVariablePermission.Everyone,
-    });
+    public NetworkVariableFloat GameTimer = new NetworkVariableFloat();
 
-    public NetworkVariableInt CurrentLevelIndex = new NetworkVariableInt(new NetworkVariableSettings
-    {
-        WritePermission = NetworkVariablePermission.ServerOnly,
-        ReadPermission = NetworkVariablePermission.Everyone,
-    });
+    public NetworkVariableInt CurrentLevelIndex = new NetworkVariableInt();
 
     [SerializeField] private Text m_timerText;
     [SerializeField] private List<string> m_levelNames;
     [SerializeField] private Transform m_lobbySpawnPosition;
     private Transform m_currentLevelSpawnPosition;
 
-    private Player m_seeker;
-    private List<Player> m_players;
-    private List<Player> m_playersLeftToFind;
+    private ulong m_seeker;
+    private List<ulong> m_players;
+    private List<ulong> m_playersLeftToFind;
     private AsyncOperation m_levelLoaded;
 
     private void Awake()
@@ -67,8 +57,8 @@ public class GameManager : NetworkBehaviour
 
     private void Start()
     {
-        m_players = new List<Player>();
-        m_playersLeftToFind = new List<Player>();
+        m_players = new List<ulong>();
+        m_playersLeftToFind = new List<ulong>();
         m_timerText.text = "";
         NetworkManager.Singleton.OnServerStarted += AddServerCallbacks;
     }
@@ -159,6 +149,13 @@ public class GameManager : NetworkBehaviour
         ToggleTransformMenuClientRpc(currentGameState);
     }
 
+    [ServerRpc(RequireOwnership = false)]
+    public void PlayerWantsToTransformServerRpc(string transformObj, ulong playerToTransform)
+    {
+        Player player = GetPlayerComponent(playerToTransform);
+        player.Transformation.Value = transformObj;
+    }
+
     [ClientRpc]
     private void ToggleTransformMenuClientRpc(int currentGameState) {
         Player player = GetPlayerComponent(NetworkManager.Singleton.LocalClientId);
@@ -172,13 +169,12 @@ public class GameManager : NetworkBehaviour
         }
     }
 
-    private void ClientDisconnected(ulong clientId)
+    private void ClientDisconnected(ulong player)
     {
         Debug.Log("Player disconnected.");
         if (NetworkManager.Singleton.IsServer)
         {
             // Remove player from all player lists.
-            Player player = GetPlayerComponent(clientId);
             if (m_players.Contains(player))
             {
                 m_players.Remove(player);
@@ -187,24 +183,31 @@ public class GameManager : NetworkBehaviour
             {
                 m_playersLeftToFind.Remove(player);
             }
-            if (NetworkManager.Singleton.ConnectedClients.Count < m_minPlayerCount)
+            if (NetworkManager.Singleton.ConnectedClients.Count < m_minPlayerCount && player == m_seeker)
             {
                CurrentGameState.Value = (int)GameState.NOT_READY;
-               UnloadCurrentLevelServerSide();
+               EndGame();
+            } 
+            else if (player == m_seeker)
+            {
+               EndGame();
             }
         }
     }
 
-    private void ClientConnected(ulong clientId)
+    private void ClientConnected(ulong player)
     {
         Debug.Log("Player joined.");
         if (NetworkManager.Singleton.IsServer)
         {
             // Add player to player list.
-            Player player = GetPlayerComponent(clientId);
             m_players.Add(player);
-            player.IsSeeker.Value = false;
-            player.IsCaught.Value = true;
+
+
+            Player playerComponent = GetPlayerComponent(player);
+            playerComponent.IsSeeker.Value = false;
+            playerComponent.IsCaught.Value = true;
+            playerComponent.Transformation.Value = "PLAYER";
 
             // Update game ready-ness.
             if (NetworkManager.Singleton.ConnectedClients.Count >= m_minPlayerCount && (GameState)CurrentGameState.Value == GameState.NOT_READY)
@@ -231,6 +234,7 @@ public class GameManager : NetworkBehaviour
         TeleportAllPlayersToLobby();
         UnloadCurrentLevelServerSide();
         UnloadCurrentLevelClientRpc();
+        m_playersLeftToFind.Clear();
     }
 
     public void ChooseSeeker()
@@ -248,8 +252,9 @@ public class GameManager : NetworkBehaviour
                 needNewSeeker = false;
             //}
             RemoveSeekerStatusFromCurrentSeeker();
-            m_seeker = GetPlayerComponent(randomClientId);
-            m_seeker.IsSeeker.Value = true;
+            m_seeker = randomClientId;
+            Player seekerPlayerComponent = GetPlayerComponent(randomClientId);
+            seekerPlayerComponent.IsSeeker.Value = true;
             
         }
     }
@@ -257,7 +262,7 @@ public class GameManager : NetworkBehaviour
     private void UpdatePlayersLeftToFind()
     {
         m_playersLeftToFind.Clear();
-        foreach (Player player in m_players)
+        foreach (ulong player in m_players)
         {
             if (player != m_seeker)
             {
@@ -268,10 +273,11 @@ public class GameManager : NetworkBehaviour
 
     private void RemoveSeekerStatusFromCurrentSeeker()
     {
-        if (m_seeker)
+        if (m_seeker != 0)
         {
-            m_seeker.IsSeeker.Value = false;
-            m_seeker = null;
+            Player seekerPlayerComponent = GetPlayerComponent(m_seeker);
+            seekerPlayerComponent.IsSeeker.Value = false;
+            m_seeker = 0;
         }
     }
 
@@ -318,19 +324,23 @@ public class GameManager : NetworkBehaviour
     [ClientRpc]
     private void UnloadCurrentLevelClientRpc()
     {
-        SceneManager.UnloadSceneAsync(m_levelNames[CurrentLevelIndex.Value]);
+        if (SceneManager.sceneCount > 1)
+        {
+            SceneManager.UnloadSceneAsync(m_levelNames[CurrentLevelIndex.Value]);
+        }
     }
 
     private void TeleportPlayersExceptSeekerToLevel()
     {
-        foreach (Player player in m_playersLeftToFind)
+        foreach (ulong player in m_playersLeftToFind)
         {
-            player.IsCaught.Value = false;
+            Player playerComponent = GetPlayerComponent(player);
+            playerComponent.IsCaught.Value = false;
             ClientRpcParams clientRpcParams = new ClientRpcParams
             {
                 Send = new ClientRpcSendParams
                 {
-                    TargetClientIds = new ulong[] { player.OwnerClientId }
+                    TargetClientIds = new ulong[] { player }
                 }
             };
             UpdateLocalPlayerPositionClientRpc(m_currentLevelSpawnPosition.position, clientRpcParams);
@@ -343,7 +353,7 @@ public class GameManager : NetworkBehaviour
         {
             Send = new ClientRpcSendParams
             {
-                TargetClientIds = new ulong[] { m_seeker.OwnerClientId }
+                TargetClientIds = new ulong[] { m_seeker }
             }
         };
         UpdateLocalPlayerPositionClientRpc(m_currentLevelSpawnPosition.position, clientRpcParams);
@@ -356,13 +366,13 @@ public class GameManager : NetworkBehaviour
 
     private void TeleportAllPlayersToLobby()
     {
-        foreach (Player player in m_players)
+        foreach (ulong player in m_players)
         {
             ClientRpcParams clientRpcParams = new ClientRpcParams
             {
                 Send = new ClientRpcSendParams
                 {
-                    TargetClientIds = new ulong[] { player.OwnerClientId }
+                    TargetClientIds = new ulong[] { player }
                 }
             };
             UpdateLocalPlayerPositionClientRpc(m_lobbySpawnPosition.position, clientRpcParams);

@@ -1,13 +1,10 @@
 using MLAPI;
 using MLAPI.Messaging;
-using MLAPI.NetworkVariable;
-using System;
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
-public class TransformationManager : MonoBehaviour
+public class TransformationManager : NetworkBehaviour
 {
     public static TransformationManager Singleton = null;
 
@@ -72,18 +69,16 @@ public class TransformationManager : MonoBehaviour
 
     private void TransformPlayer(int value)
     {
-        string obj = m_transformDropdown.options[value].text;
-        TransformPlayerClientRpc(obj, NetworkManager.Singleton.LocalClientId);
+        if (NetworkManager.Singleton.IsClient)
+        {
+            Debug.Log("Player wants to transform.");
+            string obj = m_transformDropdown.options[value].text;
+            GameManager.Singleton.PlayerWantsToTransformServerRpc(obj, NetworkManager.Singleton.LocalClientId);
+        }
     }
 
-    [ClientRpc]
-    private void TransformPlayerClientRpc(string transformObj, ulong clientId, ClientRpcParams clientRpcParams = default)
+    public void UpdatePlayerModel(string transformObj, Animator animator, SpriteRenderer spriteRenderer)
     {
-        Player player = GameManager.Singleton.GetPlayerComponent(clientId);
-        
-        SpriteRenderer spriteRenderer = player.GetComponent<SpriteRenderer>();
-        Animator animator = player.GetComponent<Animator>();
-
         if (transformObj == "PLAYER")
         {
             spriteRenderer.sprite = m_playerSprite;

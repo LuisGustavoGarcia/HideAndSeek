@@ -635,7 +635,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_gameLobbyTimerSeconds: 10
-  m_gameLengthTimerSeconds: 100
+  m_gameLengthTimerSeconds: 20
   m_gameHidingTimerSeconds: 20
   m_minPlayerCount: 2
   CurrentGameState:
@@ -648,6 +648,7 @@ MonoBehaviour:
   m_levelNames:
   - Level1
   m_lobbySpawnPosition: {fileID: 0}
+  m_playersLeftToFind: 
 --- !u!4 &654231821
 Transform:
   m_ObjectHideFlags: 0
