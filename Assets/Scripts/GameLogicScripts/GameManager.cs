@@ -57,6 +57,7 @@ public class GameManager : NetworkBehaviour
 
     private void Start()
     {
+        FieldOfView.Singleton.gameObject.SetActive(false);
         m_players = new List<ulong>();
         m_playersLeftToFind = new List<ulong>();
         m_timerText.text = "";
@@ -149,6 +150,15 @@ public class GameManager : NetworkBehaviour
         ToggleTransformMenuClientRpc(currentGameState);
     }
 
+    private void TransformAllPlayersToPlayers()
+    {
+        foreach (ulong player in m_players)
+        {
+            Player playerComponent = GetPlayerComponent(player);
+            playerComponent.Transformation.Value = "PLAYER";
+        }
+    }
+
     [ServerRpc(RequireOwnership = false)]
     public void PlayerWantsToTransformServerRpc(string transformObj, ulong playerToTransform)
     {
@@ -159,7 +169,7 @@ public class GameManager : NetworkBehaviour
     [ClientRpc]
     private void ToggleTransformMenuClientRpc(int currentGameState) {
         Player player = GetPlayerComponent(NetworkManager.Singleton.LocalClientId);
-        if (currentGameState == (int)GameState.IN_PROGRESS_HIDING || currentGameState == (int)GameState.IN_PROGRESS_SEEKING && !player.IsSeeker.Value)
+        if ((currentGameState == (int)GameState.IN_PROGRESS_HIDING || currentGameState == (int)GameState.IN_PROGRESS_SEEKING) && !player.IsSeeker.Value)
         {
             TransformationManager.Singleton.ToggleTransformMenu(true);
         } 
@@ -231,6 +241,9 @@ public class GameManager : NetworkBehaviour
     {
         Debug.Log("Ending game round.");
 
+        RemoveSeekerStatusFromCurrentSeeker();
+        DisableFieldOfViewForAllPlayers();
+        TransformAllPlayersToPlayers();
         TeleportAllPlayersToLobby();
         UnloadCurrentLevelServerSide();
         UnloadCurrentLevelClientRpc();
@@ -251,7 +264,6 @@ public class GameManager : NetworkBehaviour
             //{
                 needNewSeeker = false;
             //}
-            RemoveSeekerStatusFromCurrentSeeker();
             m_seeker = randomClientId;
             Player seekerPlayerComponent = GetPlayerComponent(randomClientId);
             seekerPlayerComponent.IsSeeker.Value = true;
@@ -361,6 +373,7 @@ public class GameManager : NetworkBehaviour
     
     private void EndHidingPhase()
     {
+        EnableFieldOfViewForSeeker();
         TeleportSeekerToLevel();
     }
 
@@ -376,6 +389,35 @@ public class GameManager : NetworkBehaviour
                 }
             };
             UpdateLocalPlayerPositionClientRpc(m_lobbySpawnPosition.position, clientRpcParams);
+        }
+    }
+
+    private void EnableFieldOfViewForSeeker()
+    {
+        Player playerComponent = GetPlayerComponent(m_seeker);
+        ClientRpcParams clientRpcParams = new ClientRpcParams
+        {
+            Send = new ClientRpcSendParams
+            {
+                TargetClientIds = new ulong[] { m_seeker }
+            }
+        };
+        playerComponent.ToggleFieldOfViewClientRpc(true, clientRpcParams);
+    }
+
+    private void DisableFieldOfViewForAllPlayers()
+    {
+        foreach (ulong player in m_players)
+        {
+            Player playerComponent = GetPlayerComponent(player);
+            ClientRpcParams clientRpcParams = new ClientRpcParams
+            {
+                Send = new ClientRpcSendParams
+                {
+                    TargetClientIds = new ulong[] { player }
+                }
+            };
+            playerComponent.ToggleFieldOfViewClientRpc(false, clientRpcParams);
         }
     }
 

@@ -18,6 +18,7 @@ public class Player : NetworkBehaviour
     public float m_moveSpeed = 5f;
 
     [SerializeField] private GameObject m_seekerNameplate;
+    [SerializeField] private GameObject m_minimumFieldOfViewSphere; 
 
     private Rigidbody2D m_rb;
     private SpriteRenderer m_spriteRenderer;
@@ -58,9 +59,26 @@ public class Player : NetworkBehaviour
 
     public override void NetworkStart()
     {
-        IsSeeker.OnValueChanged += UpdateSeekerNameplateVisibility;
+        if (NetworkManager.Singleton.IsClient)
+        {
+            FieldOfView.Singleton.gameObject.SetActive(true);
+        }
+
+        // Adjust field of view.
+        if (GetComponent<NetworkObject>().OwnerClientId == NetworkManager.Singleton.LocalClientId)
+        {
+            m_minimumFieldOfViewSphere.transform.localScale = new Vector3(100, 100, 1);
+        }
+        else
+        {
+            Destroy(m_minimumFieldOfViewSphere);
+        }
+
+        IsSeeker.OnValueChanged += UpdateSeekerStatus;
         Transformation.OnValueChanged += UpdateTransformation;
         MoveToStartingPosition();
+
+        
     }
 
     public void MoveToStartingPosition()
@@ -95,6 +113,8 @@ public class Player : NetworkBehaviour
             SubmitCurrentPositionServerRpc(new Vector2(transform.position.x, transform.position.y));
             // Animate player character.
             UpdateAnimator();
+            // Update Field of View.
+            UpdateFieldOfView();
         }
     }
 
@@ -128,13 +148,32 @@ public class Player : NetworkBehaviour
         m_animator.SetFloat("PreviousVertical", m_previousMovement.y);
     }
 
-    private void UpdateSeekerNameplateVisibility(bool previousValue, bool newValue)
+    void UpdateFieldOfView()
     {
-        m_seekerNameplate.SetActive(newValue);
+        FieldOfView.Singleton.SetOrigin(transform.position);
+        FieldOfView.Singleton.SetAimDirection(new Vector3(m_previousMovement.x, m_previousMovement.y, 0));
+    }
+
+    private void UpdateSeekerStatus(bool wasSeeker, bool isSeeker)
+    {
+        m_seekerNameplate.SetActive(isSeeker);
     }
 
     public void UpdateTransformation(string previousValue, string currentValue)
     {
         TransformationManager.Singleton.UpdatePlayerModel(Transformation.Value, m_animator, m_spriteRenderer);
+    }
+    
+    [ClientRpc]
+    public void ToggleFieldOfViewClientRpc(bool isEnabled, ClientRpcParams clientRpcParams = default)
+    {
+        if (isEnabled && GetComponent<NetworkObject>().OwnerClientId == NetworkManager.Singleton.LocalClientId)
+        {
+            m_minimumFieldOfViewSphere.transform.localScale = new Vector3(1, 1, 1);
+        }
+        else if (GetComponent<NetworkObject>().OwnerClientId == NetworkManager.Singleton.LocalClientId)
+        {
+            m_minimumFieldOfViewSphere.transform.localScale = new Vector3(100, 100, 1);
+        }
     }
 }

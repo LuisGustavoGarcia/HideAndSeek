@@ -11,9 +11,9 @@ TagManager:
   - Environment
   - Water
   - UI
+  - FieldOfViewMask
   - Objects
-  - 
-  - 
+  - Black
   - 
   - 
   - 
