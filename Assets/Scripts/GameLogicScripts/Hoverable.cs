@@ -4,36 +4,24 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using MLAPI;
 
-public class Hoverable : MonoBehaviour
+public class Hoverable : NetworkBehaviour
 {
     private bool m_hovering = false;
     private bool m_isPlayer;
     private PlayerInputActions m_input;
-    private Player m_localPlayer;
-    private IEnumerator m_findLocalPlayerObjectCoroutine;
+    private Player m_player;
 
     private void Awake()
     {
         m_input = new PlayerInputActions();
-        m_input.Desktop.Click.performed += DoTheThing;
-    }
-
-    private void Start()
-    {
-        NetworkManager.Singleton.OnServerStarted += AddServerCallbacks;
-    }
-
-    private void AddServerCallbacks()
-    {
-        NetworkManager.Singleton.OnClientConnectedCallback += ClientConnected;
-    }
-
-    private void ClientConnected(ulong clientId)
-    {
-        if (clientId == NetworkManager.Singleton.LocalClientId)
+        m_input.Desktop.Click.performed += Clicked;
+        m_player = gameObject.GetComponent<Player>();
+        if (m_player != null)
         {
-            m_findLocalPlayerObjectCoroutine = FindLocalPlayerObject();
-            StartCoroutine(m_findLocalPlayerObjectCoroutine);
+            m_isPlayer = true;
+        } else
+        {
+            m_isPlayer = false;
         }
     }
 
@@ -47,11 +35,12 @@ public class Hoverable : MonoBehaviour
         m_input.Disable();
     }
 
-    private void DoTheThing(InputAction.CallbackContext ctx)
+    private void Clicked(InputAction.CallbackContext ctx)
     {
         if (m_hovering && m_isPlayer)
         {
             Debug.Log("Found a player!");
+            GameManager.Singleton.PlayerWasFoundServerRpc(m_player.OwnerClientId);
         } else if (m_hovering)
         {
             Debug.Log("Did not find a player!");
@@ -66,27 +55,5 @@ public class Hoverable : MonoBehaviour
     private void OnMouseOut()
     {
         m_hovering = false;
-    }
-
-    private IEnumerator FindLocalPlayerObject()
-    {
-        ulong localClientId = NetworkManager.Singleton.LocalClientId;
-        while (!NetworkManager.Singleton.ConnectedClients[localClientId].PlayerObject.IsSpawned)
-        {
-            yield return null;
-        }
-        m_localPlayer = GameManager.Singleton.GetPlayerComponent(localClientId);
-        if (!m_localPlayer)
-        {
-            Destroy(this);
-        }
-        else if (m_localPlayer.IsSeeker.Value)
-        {
-            Destroy(this);
-        } 
-        else if (gameObject.GetComponent<Player>() != null)
-        {
-            this.m_isPlayer = true;
-        }
     }
 }

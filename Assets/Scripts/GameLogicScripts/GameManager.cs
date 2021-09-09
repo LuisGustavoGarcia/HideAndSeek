@@ -154,9 +154,14 @@ public class GameManager : NetworkBehaviour
     {
         foreach (ulong player in m_players)
         {
-            Player playerComponent = GetPlayerComponent(player);
-            playerComponent.Transformation.Value = "PLAYER";
+            TransformPlayerToPlayer(player);
         }
+    }
+
+    private void TransformPlayerToPlayer(ulong player)
+    {
+        Player playerComponent = GetPlayerComponent(player);
+        playerComponent.Transformation.Value = "PLAYER";
     }
 
     [ServerRpc(RequireOwnership = false)]
@@ -240,10 +245,18 @@ public class GameManager : NetworkBehaviour
     public void EndGame()
     {
         Debug.Log("Ending game round.");
+        ClientRpcParams clientRpcParams = new ClientRpcParams
+        {
+            Send = new ClientRpcSendParams
+            {
+                TargetClientIds = new ulong[] { m_seeker }
+            }
+        };
 
         RemoveSeekerStatusFromCurrentSeeker();
         DisableFieldOfViewForAllPlayers();
         TransformAllPlayersToPlayers();
+        RemoveHoverableComponentFromNonSeekerPlayersOnSeekerClientRpc(clientRpcParams);
         TeleportAllPlayersToLobby();
         UnloadCurrentLevelServerSide();
         UnloadCurrentLevelClientRpc();
@@ -288,6 +301,7 @@ public class GameManager : NetworkBehaviour
         if (m_seeker != 0)
         {
             Player seekerPlayerComponent = GetPlayerComponent(m_seeker);
+            if (seekerPlayerComponent == null) return;
             seekerPlayerComponent.IsSeeker.Value = false;
             m_seeker = 0;
         }
@@ -347,6 +361,7 @@ public class GameManager : NetworkBehaviour
         foreach (ulong player in m_playersLeftToFind)
         {
             Player playerComponent = GetPlayerComponent(player);
+            if (playerComponent == null) continue;
             playerComponent.IsCaught.Value = false;
             ClientRpcParams clientRpcParams = new ClientRpcParams
             {
@@ -373,7 +388,16 @@ public class GameManager : NetworkBehaviour
     
     private void EndHidingPhase()
     {
+        ClientRpcParams clientRpcParams = new ClientRpcParams
+        {
+            Send = new ClientRpcSendParams
+            {
+                TargetClientIds = new ulong[] { m_seeker }
+            }
+        };
+
         EnableFieldOfViewForSeeker();
+        AddHoverableComponentToNonSeekerPlayersOnSeekerClientRpc(clientRpcParams);
         TeleportSeekerToLevel();
     }
 
@@ -381,20 +405,26 @@ public class GameManager : NetworkBehaviour
     {
         foreach (ulong player in m_players)
         {
-            ClientRpcParams clientRpcParams = new ClientRpcParams
-            {
-                Send = new ClientRpcSendParams
-                {
-                    TargetClientIds = new ulong[] { player }
-                }
-            };
-            UpdateLocalPlayerPositionClientRpc(m_lobbySpawnPosition.position, clientRpcParams);
+            TeleportPlayerToLobby(player);
         }
+    }
+
+    private void TeleportPlayerToLobby(ulong player)
+    {
+        ClientRpcParams clientRpcParams = new ClientRpcParams
+        {
+            Send = new ClientRpcSendParams
+            {
+                TargetClientIds = new ulong[] { player }
+            }
+        };
+        UpdateLocalPlayerPositionClientRpc(m_lobbySpawnPosition.position, clientRpcParams);
     }
 
     private void EnableFieldOfViewForSeeker()
     {
         Player playerComponent = GetPlayerComponent(m_seeker);
+        if (playerComponent == null) return;
         ClientRpcParams clientRpcParams = new ClientRpcParams
         {
             Send = new ClientRpcSendParams
@@ -410,6 +440,7 @@ public class GameManager : NetworkBehaviour
         foreach (ulong player in m_players)
         {
             Player playerComponent = GetPlayerComponent(player);
+            if (playerComponent == null) continue;
             ClientRpcParams clientRpcParams = new ClientRpcParams
             {
                 Send = new ClientRpcSendParams
@@ -421,9 +452,55 @@ public class GameManager : NetworkBehaviour
         }
     }
 
+    // Talk about a lengthy method name.
+    [ClientRpc]
+    private void AddHoverableComponentToNonSeekerPlayersOnSeekerClientRpc(ClientRpcParams clientRpcParams = default)
+    {
+        Player[] players = FindObjectsOfType<Player>();
+        foreach (Player player in players)
+        {
+            if (player != GetPlayerComponent(NetworkManager.Singleton.LocalClientId))
+            {
+                player.gameObject.AddComponent<Hoverable>();
+            }
+        }
+    }
+
+    [ClientRpc]
+    private void RemoveHoverableComponentFromNonSeekerPlayersOnSeekerClientRpc(ClientRpcParams clientRpcParams = default)
+    {
+        Player[] players = FindObjectsOfType<Player>();
+        foreach (Player player in players)
+        {
+            if (player != GetPlayerComponent(NetworkManager.Singleton.LocalClientId))
+            {
+                Hoverable hoverable = player.gameObject.GetComponent<Hoverable>();
+                if (hoverable)
+                {
+                    Destroy(hoverable);
+                }
+            }
+        }
+    }
+
     [ClientRpc]
     private void UpdateLocalPlayerPositionClientRpc(Vector3 newPosition, ClientRpcParams clientRpcParams)
     {
         GetPlayerComponent(NetworkManager.LocalClientId).transform.position = newPosition;
+    }
+
+    [ServerRpc(RequireOwnership=false)]
+    public void PlayerWasFoundServerRpc(ulong player)
+    {
+        Debug.Log("Player was found!");
+        TeleportPlayerToLobby(player);
+        GetPlayerComponent(player).IsCaught.Value = true;
+        m_playersLeftToFind.Remove(player);
+        TransformPlayerToPlayer(player);
+
+        if (m_playersLeftToFind.Count == 0)
+        {
+            EndGame();
+        }
     }
 }
