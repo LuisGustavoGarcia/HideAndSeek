@@ -13,6 +13,6 @@ public class SortableDynamic : MonoBehaviour
 
     void Update()
     {
-        m_sprite.sortingOrder = (int)(transform.position.y * -100);
+        m_sprite.sortingOrder = (int)(transform.position.y * -110);
     }
 }
