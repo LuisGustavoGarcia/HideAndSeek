@@ -230,6 +230,8 @@ public class GameManager : NetworkBehaviour
                 CurrentGameState.Value = (int)GameState.LOBBY;
                 GameTimer.Value = m_gameLobbyTimerSeconds;
             }
+
+            TeleportPlayerToLobby(player);
         }
     }
 
